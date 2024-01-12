@@ -33,9 +33,11 @@ $ pip install -r requirements.txt
 
 ### Step1
 
-1. 创建项目
-2. 在`spiders`文件夹中创建新文件`quotes-spider.py`，用于向站点发送请求
-3. 于scapy项目目录下，在命令行运行指令`scrapy crawl quotes`得到如下结果
+创建项目
+
+在`spiders`文件夹中创建新文件`quotes-spider.py`，用于向站点发送请求、
+
+于scapy项目目录下，在命令行运行指令`scrapy crawl quotes`得到如下结果
 
 ```bash
 2024-01-12 20:08:40 [scrapy.utils.log] INFO: Scrapy 2.11.0 started (bot: tutorial)
@@ -113,9 +115,11 @@ $ pip install -r requirements.txt
  'start_time': datetime.datetime(2024, 1, 12, 12, 8, 41, 273862, tzinfo=datetime.timezone.utc)}
 2024-01-12 20:08:46 [scrapy.core.engine] INFO: Spider closed (finished)
 ```
-4. 基于函数`response.xpath(“//div[@class=’quote’]”).get()`读取每一个页面tag的HTML标签
-5. 基于如下函数获取tag中的信息
+基于函数`response.xpath(“//div[@class=’quote’]”).get()`读取每一个页面tag的HTML标签
+基于如下函数获取tag中的信息,注意运行在shell中
+
 ``` bash
+>>> scrapy shell http://quotes.toscrape.com/
 >>> quotes = response.xpath("//div[@class='quote']")
 >>> quotes[0].css(".text::text").getall()
 ['“The world as we have created it is a process of our thinking. It cannot be changed without changing our thinking.”']
@@ -124,3 +128,80 @@ $ pip install -r requirements.txt
 >>> quotes[0].css(".tag::text").getall()
 ['change', 'deep-thoughts', 'thinking', 'world']
 ```
+
+上述代码中分别使用了xpath的语法和css的语法，仅作为展示用途
+
+通过在执行命令行命令时增加一个标签的方式使用json文件进行存储
+```bash
+scrapy crawl quotes -o quotes.json
+```
+
+观察页面后，你可以看到页面的下端有一个 `next` 按钮用于跳页
+
+![Alt text](image-2.png)
+
+通过css指令找到对应的按钮
+
+```bash
+$ scrapy shell http://quotes.toscrape.com/
+...
+>>> response.css('li.next a::attr(href)').get()
+'/page/2/'
+```
+
+`next_page = response.urljoin(next_page)` 用于获取完整的URL地址
+
+`yield scrapy.Request(next_page, callback=self.parse)` 用于发送一个新请求以获取下一页，并使用回调函数调用相同的解析函数以从新页面获取内容
+
+```phthon
+for a in response.css('li.next a'):
+            yield response.follow(a, callback=self.parse)
+``` 
+
+使用`response.follow`函数可以更快地简化这一过程
+
+我们也希望获取每一个作者的更详细信息，可以使用如下的bash
+```bash
+$ scrapy shell http://quotes.toscrape.com/
+...
+>>> response.css('.author + a::attr(href)').get()
+'/author/Albert-Einstein'
+```
+
+而使用代码的方式，我们可以将这一过程循环化,在提取每个引用的循环中，发出另一个请求，转到相应作者的页面，并创建另一个 parse_author 函数来提取作者的姓名、生日、出生地点和简介，并将其输出到控制台
+
+```python
+def parse(self, response):
+        # self.logger.info('hello this is my first spider')
+        quotes = response.css('div.quote')
+        for quote in quotes:
+
+            yield {
+                'text': quote.css('.text::text').get(),
+                'author': quote.css('.author::text').get(),
+                'tags': quote.css('.tag::text').getall(),
+            }
+
+            author_url = quote.css('.author + a::attr(href)').get()
+            self.logger.info('get author page url')
+            # go to the author page
+            yield response.follow(author_url, callback=self.parse_author)
+
+        for a in response.css('li.next a'):
+            yield response.follow(a, callback=self.parse)
+
+
+    def parse_author(self, response):
+        yield {
+            'author_name': response.css('.author-title::text').get(),
+            'author_birthday': response.css('.author-born-date::text').get(),
+            'author_bornlocation': response.css('.author-born-location::text').get(),
+            'author_bio': response.css('.author-description::text').get(),
+        }
+```
+
+**Question：What is the issue**
+
+### Step2 
+
+Todo
